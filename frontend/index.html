@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ComfyUI Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0b0c0f;
+    --surface: #13151a;
+    --surface2: #1c1f28;
+    --border: #2a2d38;
+    --accent: #c8ff00;
+    --text: #e8eaf0;
+    --muted: #666b7e;
+    --danger: #ff4d6d;
+    --radius: 12px;
+    --font-head: 'Syne', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(200,255,0,.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(200,255,0,.015) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    position: relative;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 40px;
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+  }
+  .logo {
+    font-family: var(--font-head); font-size: 22px; font-weight: 800;
+    letter-spacing: -0.5px; display: flex; align-items: center; gap: 10px;
+  }
+  .logo-icon {
+    width: 32px; height: 32px; background: var(--accent);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  }
+  .logo-icon svg { width: 18px; height: 18px; }
+  .logo span { color: var(--accent); }
+  .status-pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border: 1px solid var(--border);
+    border-radius: 999px; font-size: 11px; color: var(--muted);
+  }
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  main {
+    position: relative; max-width: 1280px; margin: 0 auto;
+    padding: 40px 40px 80px; z-index: 1;
+  }
+  h1 {
+    font-family: var(--font-head); font-size: clamp(28px, 4vw, 52px);
+    font-weight: 800; letter-spacing: -2px; line-height: 1.1; margin-bottom: 8px;
+  }
+  h1 em { color: var(--accent); font-style: normal; }
+  .subtitle { font-size: 13px; color: var(--muted); margin-bottom: 48px; letter-spacing: 1px; }
+
+  .workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 900px) {
+    .workspace { grid-template-columns: 1fr; }
+    main { padding: 24px 20px 60px; }
+    header { padding: 16px 20px; }
+  }
+
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px;
+  }
+  .panel-label {
+    font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* ── Dropzone ── */
+  .dropzone {
+    border: 1.5px dashed var(--border); border-radius: 8px;
+    padding: 32px 16px; text-align: center; cursor: pointer;
+    transition: all .2s; position: relative;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--accent); background: rgba(200,255,0,.03);
+  }
+  .dropzone input[type="file"] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .dropzone-icon { font-size: 28px; margin-bottom: 8px; opacity:.4; line-height:1; }
+  .dropzone-text { font-size: 12px; color: var(--muted); }
+  .dropzone-text strong { color: var(--accent); display:block; font-size:13px; }
+
+  /* Product preview */
+  #productPreview {
+    width: 100%; max-height: 200px; object-fit: contain;
+    border-radius: 6px; display: none;
+  }
+
+  /* ── Canvas mask section ── */
+  #maskSection { margin-top: 14px; }
+
+  /* Wrapper: relatively positioned so canvas can be absolute on top */
+  #canvasWrap {
+    position: relative;
+    display: block;
+    width: 100%;
+    line-height: 0;          /* kill gap under inline img */
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  /* Background preview — always a normal block img */
+  #bgPreviewImg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* Mask canvas overlaid on top, semi-transparent so bg shows through */
+  #maskCanvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;    /* CSS size matches the img layout size */
+    height: 100%;
+    cursor: crosshair;
+    touch-action: none;
+    opacity: 0.55;  /* see the bg while painting */
+  }
+
+  /* Brush toolbar */
+  .brush-tools {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 10px; flex-wrap: wrap;
+  }
+  .brush-tools label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  input[type="range"] { accent-color: var(--accent); flex:1; min-width:60px; }
+
+  .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn {
+    padding: 6px 12px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text); font-family: var(--font-mono); font-size: 11px;
+    cursor: pointer; transition: all .15s; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+  .mask-hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  /* ── Prompt row ── */
+  .prompt-row {
+    display: flex; gap: 12px; align-items: flex-start;
+    grid-column: 1 / -1;
+  }
+  textarea {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-family: var(--font-mono);
+    font-size: 13px; padding: 14px 16px; resize: vertical;
+    min-height: 80px; outline: none; transition: border-color .2s;
+  }
+  textarea:focus { border-color: var(--accent); }
+
+  #generateBtn {
+    padding: 14px 28px; background: var(--accent); color: #000;
+    border: none; border-radius: 8px; font-family: var(--font-head);
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    transition: all .15s; white-space: nowrap; align-self: flex-end;
+  }
+  #generateBtn:hover { background: #d4ff33; transform: translateY(-1px); }
+  #generateBtn:active { transform: translateY(0); }
+  #generateBtn:disabled { background:var(--border); color:var(--muted); cursor:not-allowed; transform:none; }
+
+  /* Progress */
+  .progress-bar-wrap {
+    width:100%; background:var(--surface2); border-radius:999px;
+    overflow:hidden; height:3px; margin-top:8px; display:none;
+  }
+  .progress-bar {
+    height:100%; width:0%;
+    background: linear-gradient(90deg, var(--accent) 0%, #d4ff33 50%, var(--accent) 100%);
+    background-size:200%; border-radius:999px;
+    animation: shimmer 1.5s infinite; transition: width .4s ease;
+  }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  .status-text {
+    font-size:12px; color:var(--muted); margin-top:8px;
+    min-height:18px; display:flex; align-items:center; gap:6px;
+  }
+  .spinner {
+    width:12px; height:12px; border:2px solid var(--border);
+    border-top-color:var(--accent); border-radius:50%;
+    animation: spin .6s linear infinite; display:none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Output */
+  .output-panel {
+    grid-column: 1 / -1; min-height: 260px;
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+  }
+  .output-empty { text-align:center; color:var(--muted); font-size:13px; }
+  .output-empty .big-icon { font-size:48px; margin-bottom:12px; opacity:.2; }
+
+  .results-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+    gap:16px; width:100%;
+  }
+  .result-card {
+    position:relative; border-radius:8px; overflow:hidden;
+    background:var(--surface2); border:1px solid var(--border);
+    animation: fadeUp .4s ease;
+  }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  .result-card img { width:100%; display:block; transition:transform .3s; }
+  .result-card:hover img { transform:scale(1.02); }
+  .result-card .download-btn {
+    position:absolute; bottom:8px; right:8px;
+    background:rgba(0,0,0,.7); color:var(--accent);
+    border:1px solid var(--accent); border-radius:6px;
+    padding:5px 10px; font-size:11px; font-family:var(--font-mono);
+    cursor:pointer; text-decoration:none; opacity:0; transition:opacity .2s;
+  }
+  .result-card:hover .download-btn { opacity:1; }
+
+  .error-msg {
+    color:var(--danger); font-size:13px; padding:12px 16px;
+    border:1px solid var(--danger); border-radius:8px;
+    background:rgba(255,77,109,.05); width:100%; text-align:center; display:none;
+  }
+
+  ::-webkit-scrollbar { width:6px; }
+  ::-webkit-scrollbar-track { background:var(--bg); }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 9h14M9 2v14M4 4l10 10M14 4L4 14" stroke="#000" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    Comfy<span>Studio</span>
+  </div>
+  <div class="status-pill"><div class="dot"></div>ComfyUI Connected</div>
+</header>
+
+<main>
+  <h1>AI Image <em>Compositor</em></h1>
+  <p class="subtitle">// UPLOAD · MASK · GENERATE · DOWNLOAD</p>
+
+  <div class="workspace">
+
+    <!-- 01 Product Image -->
+    <div class="panel">
+      <div class="panel-label">01 — Product Image</div>
+      <div class="dropzone" id="productDrop">
+        <input type="file" id="productInput" accept="image/*"/>
+        <div id="productPlaceholder">
+          <div class="dropzone-icon">📦</div>
+          <div class="dropzone-text">
+            <strong>Drop product image</strong>
+            PNG, JPG, WEBP accepted
+          </div>
+        </div>
+        <img id="productPreview" alt="product preview"/>
+      </div>
+    </div>
+
+    <!-- 02 Background + Mask -->
+    <div class="panel">
+      <div class="panel-label">02 — Background + Mask</div>
+
+      <!-- Dropzone (hidden after upload) -->
+      <div class="dropzone" id="bgDrop">
+        <input type="file" id="bgInput" accept="image/*"/>
+        <div class="dropzone-icon">🖼️</div>
+        <div class="dropzone-text">
+          <strong>Drop background image</strong>
+          Then paint the mask below
+        </div>
+      </div>
+
+      <!-- Mask painter (shown after upload) -->
+      <div id="maskSection" style="display:none;">
+        <div id="canvasWrap">
+          <img id="bgPreviewImg" alt="background"/>
+          <canvas id="maskCanvas"></canvas>
+        </div>
+        <div class="brush-tools">
+          <label>Brush</label>
+          <input type="range" id="brushSize" min="4" max="120" value="24"/>
+          <span id="brushSizeVal" style="font-size:11px;color:var(--muted);min-width:28px;">24</span>
+          <div class="btn-group">
+            <button class="btn active" id="drawBtn">✏️ Draw</button>
+            <button class="btn" id="eraseBtn">⌫ Erase</button>
+            <button class="btn danger" id="clearBtn">✕ Clear</button>
+            <button class="btn" id="changeBgBtn">↺ Change</button>
+          </div>
+        </div>
+        <div class="mask-hint">
+          White = <span style="color:var(--accent);">modify area</span> &nbsp;|&nbsp; Black = keep area
+        </div>
+      </div>
+    </div>
+
+    <!-- 03 Prompt + Generate -->
+    <div class="prompt-row">
+      <div style="flex:1;">
+        <div class="panel-label">03 — Prompt</div>
+        <textarea id="promptInput"
+          placeholder="Describe what to generate in the masked area…&#10;e.g. product on a marble surface, soft studio lighting"></textarea>
+        <div class="progress-bar-wrap" id="progressWrap">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="status-text">
+          <div class="spinner" id="spinner"></div>
+          <span id="statusMsg">Ready to generate</span>
+        </div>
+      </div>
+      <button id="generateBtn">Generate →</button>
+    </div>
+
+    <!-- 04 Output -->
+    <div class="panel output-panel">
+      <div class="output-empty" id="outputEmpty">
+        <div class="big-icon">✦</div>
+        <div>Results will appear here</div>
+        <div style="font-size:11px;margin-top:4px;opacity:.5;">Upload images &amp; click Generate</div>
+      </div>
+      <div class="error-msg" id="errorMsg"></div>
+      <div class="results-grid" id="resultsGrid"></div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────
+let productFile = null;
+let bgFile      = null;
+let isDrawing   = false;
+let eraseMode   = false;
+let brushSize   = 24;
+
+const canvas = document.getElementById('maskCanvas');
+const ctx    = canvas.getContext('2d');
+const bgImg  = document.getElementById('bgPreviewImg');
+
+// ─── Generic dropzone setup ───────────────────────────────────────────
+function setupDropzone(dropId, inputId, onFile) {
+  const drop  = document.getElementById(dropId);
+  const input = document.getElementById(inputId);
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]);
+  });
+  input.addEventListener('change', () => { if (input.files[0]) onFile(input.files[0]); });
+}
+
+// ─── Product ──────────────────────────────────────────────────────────
+setupDropzone('productDrop', 'productInput', file => {
+  productFile = file;
+  const prev = document.getElementById('productPreview');
+  const ph   = document.getElementById('productPlaceholder');
+  const r    = new FileReader();
+  r.onload = e => { prev.src = e.target.result; prev.style.display = 'block'; ph.style.display = 'none'; };
+  r.readAsDataURL(file);
+});
+
+// ─── Background ───────────────────────────────────────────────────────
+setupDropzone('bgDrop', 'bgInput', loadBackground);
+
+function loadBackground(file) {
+  bgFile = file;
+  const r = new FileReader();
+  r.onload = ev => {
+    // Set src — triggers bgImg.onload
+    bgImg.src = ev.target.result;
+  };
+  r.readAsDataURL(file);
+}
+
+// Key fix: listen on bgImg.onload to init canvas AFTER img has layout
+bgImg.addEventListener('load', () => {
+  // Set canvas internal resolution = natural image pixels
+  canvas.width  = bgImg.naturalWidth;
+  canvas.height = bgImg.naturalHeight;
+
+  // Fill canvas black (= keep everything by default)
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Show mask section (hides dropzone, shows img + canvas)
+  document.getElementById('bgDrop').style.display      = 'none';
+  document.getElementById('maskSection').style.display = 'block';
+});
+
+// Change background button
+document.getElementById('changeBgBtn').addEventListener('click', () => {
+  bgFile = null;
+  bgImg.src = '';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('maskSection').style.display = 'none';
+  document.getElementById('bgDrop').style.display      = '';
+  // Reset file input so same file can be re-selected
+  document.getElementById('bgInput').value = '';
+});
+
+// ─── Brush controls ───────────────────────────────────────────────────
+const brushSizeInput = document.getElementById('brushSize');
+const brushSizeVal   = document.getElementById('brushSizeVal');
+brushSizeInput.addEventListener('input', () => {
+  brushSize = parseInt(brushSizeInput.value);
+  brushSizeVal.textContent = brushSize;
+});
+document.getElementById('drawBtn').addEventListener('click', () => {
+  eraseMode = false;
+  document.getElementById('drawBtn').classList.add('active');
+  document.getElementById('eraseBtn').classList.remove('active');
+});
+document.getElementById('eraseBtn').addEventListener('click', () => {
+  eraseMode = true;
+  document.getElementById('eraseBtn').classList.add('active');
+  document.getElementById('drawBtn').classList.remove('active');
+});
+document.getElementById('clearBtn').addEventListener('click', () => {
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+});
+
+// ─── Canvas drawing ───────────────────────────────────────────────────
+// Map mouse/touch CSS coords → canvas buffer coords
+function getCanvasPos(e) {
+  const rect   = canvas.getBoundingClientRect();          // CSS layout rect
+  const scaleX = canvas.width  / rect.width;             // buffer / display
+  const scaleY = canvas.height / rect.height;
+  const src    = e.touches ? e.touches[0] : e;
+  return {
+    x: (src.clientX - rect.left) * scaleX,
+    y: (src.clientY - rect.top)  * scaleY,
+  };
+}
+
+function paint(e) {
+  if (!isDrawing) return;
+  e.preventDefault();
+  const { x, y } = getCanvasPos(e);
+  if (eraseMode) {
+    // Erase white → black (restore keep-area)
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#000';
+  } else {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#fff';
+  }
+  ctx.beginPath();
+  ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+canvas.addEventListener('mousedown',  e => { isDrawing = true; paint(e); });
+canvas.addEventListener('mousemove',  paint);
+canvas.addEventListener('mouseup',    () => isDrawing = false);
+canvas.addEventListener('mouseleave', () => isDrawing = false);
+canvas.addEventListener('touchstart', e => { isDrawing = true; paint(e); }, { passive: false });
+canvas.addEventListener('touchmove',  paint, { passive: false });
+canvas.addEventListener('touchend',   () => isDrawing = false);
+
+// ─── Export mask blob ─────────────────────────────────────────────────
+function getMaskBlob() {
+  return new Promise(resolve => {
+    const tmp = document.createElement('canvas');
+    tmp.width  = canvas.width;
+    tmp.height = canvas.height;
+    const tc   = tmp.getContext('2d');
+    tc.fillStyle = '#000';
+    tc.fillRect(0, 0, tmp.width, tmp.height);
+    tc.drawImage(canvas, 0, 0);
+    tmp.toBlob(resolve, 'image/png');
+  });
+}
+
+// ─── Generate ─────────────────────────────────────────────────────────
+function setStatus(msg, loading = false) {
+  document.getElementById('statusMsg').textContent    = msg;
+  document.getElementById('spinner').style.display   = loading ? 'block' : 'none';
+}
+function setProgress(pct) {
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('progressBar').style.width    = pct + '%';
+}
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+  document.getElementById('outputEmpty').style.display = 'none';
+}
+
+document.getElementById('generateBtn').addEventListener('click', async () => {
+  const prompt = document.getElementById('promptInput').value.trim();
+  if (!productFile) return alert('Please upload a product image.');
+  if (!bgFile)      return alert('Please upload a background image.');
+  if (!prompt)      return alert('Please enter a prompt.');
+
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  document.getElementById('errorMsg').style.display   = 'none';
+  document.getElementById('outputEmpty').style.display = 'none';
+  document.getElementById('resultsGrid').innerHTML     = '';
+
+  setStatus('Preparing images…', true);
+  setProgress(10);
+
+  const maskBlob = await getMaskBlob();
+  const fd = new FormData();
+  fd.append('product',    productFile, productFile.name);
+  fd.append('background', bgFile,      bgFile.name);
+  fd.append('mask',       maskBlob,    'mask.png');
+  fd.append('prompt',     prompt);
+
+  setStatus('Uploading to server…', true);
+  setProgress(30);
+
+  try {
+    const resp = await fetch('/generate', { method: 'POST', body: fd });
+    setStatus('ComfyUI processing…', true);
+    setProgress(70);
+
+    if (!resp.ok) {
+      let detail = `HTTP ${resp.status}`;
+      try { const j = await resp.json(); detail = j.detail || detail; } catch(_) {}
+      throw new Error(detail);
+    }
+
+    const data = await resp.json();
+    setProgress(100);
+    setStatus(`Done — ${data.outputs.length} image(s) generated`);
+
+    const grid = document.getElementById('resultsGrid');
+    data.outputs.forEach(out => {
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      const img = document.createElement('img');
+      img.src = out.url + '?t=' + Date.now();
+      img.alt = 'Generated result';
+      const dl = document.createElement('a');
+      dl.className  = 'download-btn';
+      dl.href       = out.url;
+      dl.download   = '';
+      dl.textContent = '↓ Download';
+      card.appendChild(img);
+      card.appendChild(dl);
+      grid.appendChild(card);
+    });
+
+    setTimeout(() => { document.getElementById('progressWrap').style.display = 'none'; }, 1500);
+
+  } catch (err) {
+    showError(err.message || 'Unknown error');
+    setStatus('Generation failed');
+    document.getElementById('progressWrap').style.display = 'none';
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
